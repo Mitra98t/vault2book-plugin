@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "test-plugin",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Plugin di test. This plugin demonstrates some of the capabilities of the Obsidian API.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

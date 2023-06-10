@@ -1,11 +1,10 @@
 {
-	"id": "obsidian-sample-plugin",
-	"name": "Sample Plugin",
+	"id": "test-plugin",
+	"name": "Plugin di Test",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "This is a sample plugin for Obsidian. This plugin demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "Plugin di test. This plugin demonstrates some of the capabilities of the Obsidian API.",
+	"author": "Mitra98t",
+	"authorUrl": "https://github.com/Mitra98t",
 	"isDesktopOnly": false
 }

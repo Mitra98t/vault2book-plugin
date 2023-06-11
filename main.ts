@@ -62,14 +62,14 @@ export default class PluginMainClass extends Plugin {
 			id: "generate-book-from-folder",
 			name: "Generates a book from the specified folder",
 			callback: () => {
-				new TestFuzzy(this, generateBook).open();
+				new PathFuzzy(this, generateBook).open();
 			},
 		});
 
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new SettingsPage(this.app, this));
 
 		this.registerInterval(
-			window.setInterval(() => console.log("setInterval"), 5 * 60 * 1000)
+			window.setInterval(() => 5 * 60 * 1000)
 		);
 	}
 
@@ -299,13 +299,9 @@ async function generateBook(
 	const { vault } = app;
 
 	const generateTOCs = settings.generateTOCs;
-	console.log(generateTOCs);
 
-	// const files: TFile[] = await vault.getMarkdownFiles();
 
 	const files: TAbstractFile | null = await vault.getAbstractFileByPath("/");
-	console.log(startingFolder);
-	console.log(files);
 	if (files === null || !isDocFolder(files)) {
 		console.error("Could not find folder: " + startingFolder);
 		if (startingFolder === "/") new Notice("Empty Vault");
@@ -324,7 +320,6 @@ async function generateBook(
 	);
 	fileList = [];
 
-	console.log(documents);
 
 	let content = `<!--book-ignore-->\n\n`;
 
@@ -342,8 +337,6 @@ async function generateBook(
 			const isFileValid = await checkFile(app, file.document as TFile, {
 				...settings,
 			});
-			console.log(file.name);
-			console.log(isFileValid);
 			if (!isFileValid) continue;
 		}
 		const currToc = await getTableOfContent(
@@ -386,14 +379,12 @@ async function generateBook(
 		}_book.md`;
 		const fileExists = await adapter.exists(fileName);
 		if (fileExists) {
-			console.log("File exists going into modal");
 			new ConfirmModal(
 				app,
 				"Overwrite",
 				`A file named ${fileName} already exists. Do you want to overwrite it?`,
 				() => {
 					const file = vault.getAbstractFileByPath(fileName);
-					console.log(file);
 					if (file === null) return;
 					vault
 						.modify(file as TFile, content)
@@ -409,7 +400,6 @@ async function generateBook(
 		}
 	} catch (e) {
 		new Notice(e.toString());
-		console.log(e.toString());
 	}
 
 	return Promise.resolve(true);
@@ -461,23 +451,7 @@ class ConfirmModal extends Modal {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.setText("Woah!");
-	}
-
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
-}
-
-export class TestFuzzy extends FuzzySuggestModal<fileStruct> {
+export class PathFuzzy extends FuzzySuggestModal<fileStruct> {
 	plugin: PluginMainClass;
 	selectCallBack: any;
 	constructor(plugin: PluginMainClass, selectCallBack: any) {
@@ -509,44 +483,7 @@ export class TestFuzzy extends FuzzySuggestModal<fileStruct> {
 	}
 }
 
-export class GetPathModal extends Modal {
-	result: string;
-	onSubmit: (result: string) => void;
-
-	constructor(app: App, onSubmit: (result: string) => void) {
-		super(app);
-		this.onSubmit = onSubmit;
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-
-		contentEl.createEl("h1", { text: "Path to folder to convert" });
-
-		new Setting(contentEl).setName("Name").addText((text) =>
-			text.onChange((value) => {
-				this.result = value;
-			})
-		);
-
-		new Setting(contentEl).addButton((btn) =>
-			btn
-				.setButtonText("Submit")
-				.setCta()
-				.onClick(() => {
-					this.close();
-					this.onSubmit(this.result);
-				})
-		);
-	}
-
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
+class SettingsPage extends PluginSettingTab {
 	plugin: PluginMainClass;
 
 	constructor(app: App, plugin: PluginMainClass) {
@@ -568,7 +505,6 @@ class SampleSettingTab extends PluginSettingTab {
 				toggle
 					.setValue(this.plugin.settings.generateTOCs)
 					.onChange(async (value) => {
-						console.log("Toggle: " + value);
 						this.plugin.settings.generateTOCs = value;
 						await this.plugin.saveSettings();
 					})
@@ -581,7 +517,6 @@ class SampleSettingTab extends PluginSettingTab {
 				toggle
 					.setValue(this.plugin.settings.includeEmptyFolders)
 					.onChange(async (value) => {
-						console.log("Toggle: " + value);
 						this.plugin.settings.includeEmptyFolders = value;
 						await this.plugin.saveSettings();
 					})
@@ -596,7 +531,6 @@ class SampleSettingTab extends PluginSettingTab {
 					.addOption(SortingStrategy.CREATION_TIME, "Creation time")
 					.setValue(this.plugin.settings.sortingStrategy)
 					.onChange(async (value) => {
-						console.log("Dropdown: " + value);
 						this.plugin.settings.sortingStrategy =
 							value as SortingStrategy;
 						await this.plugin.saveSettings();
@@ -615,7 +549,6 @@ class SampleSettingTab extends PluginSettingTab {
 					)
 					.setValue(this.plugin.settings.lowGraneSortingStrategy)
 					.onChange(async (value) => {
-						console.log("Dropdown: " + value);
 						this.plugin.settings.lowGraneSortingStrategy =
 							value as LowGraneSortingStrategy;
 						await this.plugin.saveSettings();
@@ -643,7 +576,6 @@ class SampleSettingTab extends PluginSettingTab {
 						.setPlaceholder("Enter file name")
 						.setValue(element)
 						.onChange(async (value) => {
-							console.log("Element: " + value);
 							this.plugin.settings.filesToIgnore[i] = value;
 							await this.plugin.saveSettings();
 						})
@@ -682,7 +614,6 @@ class SampleSettingTab extends PluginSettingTab {
 						.setPlaceholder("Enter exntesion")
 						.setValue(element)
 						.onChange(async (value) => {
-							console.log("Element: " + value);
 							this.plugin.settings.extensionsToIgnore[i] = value;
 							await this.plugin.saveSettings();
 						})
@@ -717,7 +648,6 @@ class SampleSettingTab extends PluginSettingTab {
 						.setPlaceholder("Enter folder name")
 						.setValue(element)
 						.onChange(async (value) => {
-							console.log("Element: " + value);
 							this.plugin.settings.foldersToIgnore[i] = value;
 							await this.plugin.saveSettings();
 						})
@@ -752,7 +682,6 @@ class SampleSettingTab extends PluginSettingTab {
 						.setPlaceholder("Enter tag")
 						.setValue(element)
 						.onChange(async (value) => {
-							console.log("Element: " + value);
 							this.plugin.settings.tagsToIgnore[i] = value;
 							await this.plugin.saveSettings();
 						})

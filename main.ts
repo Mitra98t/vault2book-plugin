@@ -52,7 +52,7 @@ export default class PluginMainClass extends Plugin {
 
 		this.addCommand({
 			id: "generate-vault-book",
-			name: "Generates a book from the entire vault",
+			name: "Generate book from the entire vault",
 			callback: () => {
 				generateBook(this.app, this.settings);
 			},
@@ -60,7 +60,7 @@ export default class PluginMainClass extends Plugin {
 
 		this.addCommand({
 			id: "generate-book-from-folder",
-			name: "Generates a book from the specified folder",
+			name: "Generate a book from a specified folder",
 			callback: () => {
 				new PathFuzzy(this, generateBook).open();
 			},
@@ -291,14 +291,14 @@ function getSpacer(isFullPage = false): string {
 	return '<div style="height: 200px;"></div>';
 }
 
-const clamp = (number: number, min: number, max: number):number =>
-   Math.max(min, Math.min(number, max));
+const clamp = (number: number, min: number, max: number): number =>
+	Math.max(min, Math.min(number, max));
 
 async function generateBook(
 	app: App,
 	settings: PluginSettings,
 	startingFolder = "/",
-	depthOffset = 0,
+	depthOffset = 0
 ): Promise<boolean> {
 	const { vault } = app;
 
@@ -321,7 +321,7 @@ async function generateBook(
 	let content = `\n`;
 
 	content += "\n<!--book-ignore-->\n<!--dont-delete-these-comments-->\n\n";
-		
+
 	for (let i = 0; i < documents.length; i++) {
 		const file = documents[i];
 		if (file.type === "folder") {
@@ -347,8 +347,8 @@ async function generateBook(
 				generateTOCs ? currToc : ""
 			}\n\n---\n\n${getSpacer(true)}\n\n`;
 		} else {
-			const fileDepth = clamp(file.depth - depthOffset, 1, 6)
-			const titleMD = new Array(fileDepth).fill("#").join("")
+			const fileDepth = clamp(file.depth - depthOffset, 1, 6);
+			const titleMD = new Array(fileDepth).fill("#").join("");
 			if (file.type === "folder") {
 				content += `${
 					file.depth == 1 ? getSpacer(true) : "---"
@@ -356,9 +356,7 @@ async function generateBook(
 					generateTOCs ? currToc : ""
 				}\n\n---\n\n`;
 			} else {
-				content += `\n\n${titleMD} ${file.graphicName}\n\n![[${
-					file.name
-				}]]\n\n---\n\n`;
+				content += `\n\n${titleMD} ${file.graphicName}\n\n![[${file.name}]]\n\n---\n\n`;
 			}
 		}
 	}
@@ -473,9 +471,15 @@ export class PathFuzzy extends FuzzySuggestModal<fileStruct> {
 
 	onChooseItem(folder: fileStruct, evt: MouseEvent | KeyboardEvent) {
 		new Notice(`Selected ${folder.path}`);
-		console.log(folder.path)
-		const depthOffset = folder.path.split('').filter(x => x == '/').length -1
-		this.selectCallBack(this.plugin.app, this.plugin.settings, folder.path, depthOffset );
+		console.log(folder.path);
+		const depthOffset =
+			folder.path.split("").filter((x) => x == "/").length - 1;
+		this.selectCallBack(
+			this.plugin.app,
+			this.plugin.settings,
+			folder.path,
+			depthOffset
+		);
 	}
 }
 

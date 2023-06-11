@@ -29,6 +29,7 @@ interface PluginSettings {
 	extensionsToIgnore: string[];
 	generateTOCs: boolean;
 	includeEmptyFolders: boolean;
+	showRibbonButton: boolean;
 	sortingStrategy: SortingStrategy;
 	lowGraneSortingStrategy: LowGraneSortingStrategy;
 }
@@ -40,15 +41,19 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	extensionsToIgnore: [],
 	generateTOCs: true,
 	includeEmptyFolders: false,
+	showRibbonButton: true,
 	sortingStrategy: SortingStrategy.ALPHABETICAL,
 	lowGraneSortingStrategy: LowGraneSortingStrategy.FILEFIRST,
 };
 
 export default class PluginMainClass extends Plugin {
 	settings: PluginSettings;
+	ribbonButton: HTMLElement;
 
 	async onload() {
 		await this.loadSettings();
+
+		this.setRibbonButton();
 
 		this.addCommand({
 			id: "generate-vault-book",
@@ -66,9 +71,41 @@ export default class PluginMainClass extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: "remove-all-books-from-vault",
+			name: "Remove all generated books from vault",
+			callback: () => {
+				new ConfirmModal(
+					app,
+					"Remove all books?",
+					`You are about to delete every book you have created in you vault, procede?
+					WARNING: All files containing the following comment: <!--book-ignore--> will be deleted`,
+					() => removeAllBooks(app),
+					() => {}
+				).open();
+			},
+		});
+
 		this.addSettingTab(new SettingsPage(this.app, this));
 
 		this.registerInterval(window.setInterval(() => 5 * 60 * 1000));
+	}
+
+	setRibbonButton(): boolean {
+		if (this.settings.showRibbonButton) {
+			this.ribbonButton = this.addRibbonIcon(
+				"book",
+				"Obsidian 2 Book: Generate a book from a specified folder",
+				(evt: MouseEvent) => {
+					new PathFuzzy(this, generateBook).open();
+				}
+			);
+			this.ribbonButton.removeClass("hide");
+			return true;
+		} else {
+			this.ribbonButton.addClass("hide");
+			return false;
+		}
 	}
 
 	onunload() {}
@@ -83,6 +120,19 @@ export default class PluginMainClass extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+}
+
+async function removeAllBooks(app: App) {
+	const { vault } = app;
+	const books = vault.getFiles();
+	console.log(books);
+	for (let i = 0; i < books.length; i++) {
+		const file = books[i];
+		const fileContent = await vault.read(file);
+		if (isBook(fileContent)) {
+			await vault.delete(file);
+		}
 	}
 }
 
@@ -121,6 +171,10 @@ function lineIncludesTag(line: string, tag: string[]): boolean {
 	return foundTagStandardForm || foundTagMetadataForm;
 }
 
+function isBook(fileContent: string): boolean {
+	return fileContent.includes("<!--book-ignore-->");
+}
+
 /**
  * true if file is valid false if file is to be ignored
  */
@@ -130,7 +184,7 @@ async function checkFile(
 	settings: PluginSettings
 ): Promise<boolean> {
 	const fileContent = await app.vault.read(file);
-	const isBookIgnore = fileContent.includes("<!--book-ignore-->");
+	const isBookIgnore = isBook(fileContent);
 	const isTagIgnore =
 		settings.tagsToIgnore.length == 0
 			? false
@@ -499,8 +553,21 @@ class SettingsPage extends PluginSettingTab {
 		containerEl.createEl("h2", { text: "Settings for my awesome plugin." });
 
 		new Setting(containerEl)
+			.setName("Show Ribbon Button")
+			.setDesc("Show button as shortcut on sidebar")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showRibbonButton)
+					.onChange(async (value) => {
+						this.plugin.settings.showRibbonButton = value;
+						await this.plugin.saveSettings();
+						this.plugin.setRibbonButton();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName("Generate TOCs")
-			.setDesc("Generate Tablo of Contents for all directories")
+			.setDesc("Generate Table of Contents for all directories")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.generateTOCs)

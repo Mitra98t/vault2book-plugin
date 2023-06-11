@@ -376,7 +376,6 @@ async function generateBook(
 
 	content += "\n<!--book-ignore-->\n<!--dont-delete-these-comments-->\n\n";
 
-	console.log(documents);
 	for (let i = 0; i < documents.length; i++) {
 		const file = documents[i];
 		if (file.type === "folder") {

@@ -291,10 +291,14 @@ function getSpacer(isFullPage = false): string {
 	return '<div style="height: 200px;"></div>';
 }
 
+const clamp = (number, min, max) =>
+   Math.max(min, Math.min(number, max));
+
 async function generateBook(
 	app: App,
 	settings: PluginSettings,
-	startingFolder = "/"
+	startingFolder = "/",
+	depthOffset = 0,
 ): Promise<boolean> {
 	const { vault } = app;
 
@@ -343,18 +347,16 @@ async function generateBook(
 				generateTOCs ? currToc : ""
 			}\n\n---\n\n${getSpacer(true)}\n\n`;
 		} else {
+			const fileDepth = clamp(file.depth - depthOffset, 1, 6)
+			const titleMD = new Array(fileDepth).fill("#").join("")
 			if (file.type === "folder") {
 				content += `${
 					file.depth == 1 ? getSpacer(true) : "---"
-				}\n\n${new Array(file.depth > 6 ? 6 : file.depth)
-					.fill("#")
-					.join("")} ${file.graphicName}\n\n${
+				}\n\n${titleMD} ${file.graphicName}\n\n${
 					generateTOCs ? currToc : ""
 				}\n\n---\n\n`;
 			} else {
-				content += `\n\n${new Array(file.depth > 6 ? 6 : file.depth)
-					.fill("#")
-					.join("")} ${file.graphicName}\n\n![[${
+				content += `\n\n${titleMD} ${file.graphicName}\n\n![[${
 					file.name
 				}]]\n\n---\n\n`;
 			}
@@ -471,7 +473,9 @@ export class PathFuzzy extends FuzzySuggestModal<fileStruct> {
 
 	onChooseItem(folder: fileStruct, evt: MouseEvent | KeyboardEvent) {
 		new Notice(`Selected ${folder.path}`);
-		this.selectCallBack(this.plugin.app, this.plugin.settings, folder.path);
+		console.log(folder.path)
+		const depthOffset = folder.path.split('').filter(x => x == '/').length -1
+		this.selectCallBack(this.plugin.app, this.plugin.settings, folder.path, depthOffset );
 	}
 }
 

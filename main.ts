@@ -22,7 +22,7 @@ enum LowGraneSortingStrategy {
 	FOLDERFIRST = "folder first",
 }
 
-interface PluginSettings {
+interface Obsidian2BookSettings {
 	foldersToIgnore: string[];
 	filesToIgnore: string[];
 	tagsToIgnore: string[];
@@ -34,7 +34,7 @@ interface PluginSettings {
 	lowGraneSortingStrategy: LowGraneSortingStrategy;
 }
 
-const DEFAULT_SETTINGS: PluginSettings = {
+const DEFAULT_SETTINGS: Obsidian2BookSettings = {
 	foldersToIgnore: [],
 	filesToIgnore: [],
 	tagsToIgnore: [],
@@ -46,8 +46,8 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	lowGraneSortingStrategy: LowGraneSortingStrategy.FILEFIRST,
 };
 
-export default class PluginMainClass extends Plugin {
-	settings: PluginSettings;
+export default class Obsidian2BookClass extends Plugin {
+	settings: Obsidian2BookSettings;
 	ribbonButton: HTMLElement;
 
 	async onload() {
@@ -86,7 +86,7 @@ export default class PluginMainClass extends Plugin {
 			},
 		});
 
-		this.addSettingTab(new SettingsPage(this.app, this));
+		this.addSettingTab(new Obsidian2BookSettingsPage(this.app, this));
 
 		this.registerInterval(window.setInterval(() => 5 * 60 * 1000));
 	}
@@ -181,7 +181,7 @@ function isBook(fileContent: string): boolean {
 async function checkFile(
 	app: App,
 	file: TFile,
-	settings: PluginSettings
+	settings: Obsidian2BookSettings
 ): Promise<boolean> {
 	const fileContent = await app.vault.read(file);
 	const isBookIgnore = isBook(fileContent);
@@ -214,7 +214,7 @@ async function checkFile(
 function checkFolder(
 	app: App,
 	file: TFolder,
-	settings: PluginSettings
+	settings: Obsidian2BookSettings
 ): boolean {
 	const isFolderIgnore =
 		settings.foldersToIgnore.length == 0
@@ -229,7 +229,7 @@ function checkFolder(
 }
 
 function visitFolder(
-	settings: PluginSettings,
+	settings: Obsidian2BookSettings,
 	fileStr: TAbstractFile,
 	app: App,
 	onlyFolders = false,
@@ -311,7 +311,7 @@ async function getTableOfContent(
 	currPath: string,
 	currDepth: number,
 	fileList: fileStruct[],
-	settings: PluginSettings
+	settings: Obsidian2BookSettings
 ): Promise<string> {
 	const tocArray: fileStruct[] = [...fileList].filter(
 		(file) => file.depth === currDepth + 1 && file.path.includes(currPath)
@@ -350,7 +350,7 @@ const clamp = (number: number, min: number, max: number): number =>
 
 async function generateBook(
 	app: App,
-	settings: PluginSettings,
+	settings: Obsidian2BookSettings,
 	startingFolder = "/",
 	depthOffset = 0
 ): Promise<boolean> {
@@ -499,9 +499,9 @@ class ConfirmModal extends Modal {
 }
 
 export class PathFuzzy extends FuzzySuggestModal<fileStruct> {
-	plugin: PluginMainClass;
+	plugin: Obsidian2BookClass;
 	selectCallBack: any;
-	constructor(plugin: PluginMainClass, selectCallBack: any) {
+	constructor(plugin: Obsidian2BookClass, selectCallBack: any) {
 		super(plugin.app);
 		this.plugin = plugin;
 		this.selectCallBack = selectCallBack;
@@ -537,10 +537,10 @@ export class PathFuzzy extends FuzzySuggestModal<fileStruct> {
 	}
 }
 
-class SettingsPage extends PluginSettingTab {
-	plugin: PluginMainClass;
+class Obsidian2BookSettingsPage extends PluginSettingTab {
+	plugin: Obsidian2BookClass;
 
-	constructor(app: App, plugin: PluginMainClass) {
+	constructor(app: App, plugin: Obsidian2BookClass) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

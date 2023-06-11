@@ -1,6 +1,7 @@
 /* eslint-disable no-mixed-spaces-and-tabs */
 import {
 	App,
+	FuzzySuggestModal,
 	Modal,
 	Notice,
 	Plugin,
@@ -11,7 +12,7 @@ import {
 	TFolder,
 } from "obsidian";
 
-import * as path from "path";
+// import * as path from "path";
 
 // Remember to rename these classes and interfaces!
 
@@ -31,6 +32,7 @@ interface MyPluginSettings {
 	tagsToIgnore: string[];
 	extensionsToIgnore: string[];
 	generateTOCs: boolean;
+	includeEmptyFolders: boolean;
 	sortingStrategy: SortingStrategy;
 	lowGraneSortingStrategy: LowGraneSortingStrategy;
 	// TODO remove this thing
@@ -43,6 +45,7 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	tagsToIgnore: [],
 	extensionsToIgnore: [],
 	generateTOCs: true,
+	includeEmptyFolders: false,
 	sortingStrategy: SortingStrategy.ALPHABETICAL,
 	lowGraneSortingStrategy: LowGraneSortingStrategy.FILEFIRST,
 	elements: [],
@@ -68,6 +71,14 @@ export default class MyPlugin extends Plugin {
 			name: "Generates a book from the entire vault",
 			callback: () => {
 				generateBook(this.app, this.settings);
+			},
+		});
+
+		this.addCommand({
+			id: "generate-book-from-folder",
+			name: "Generates a book from the specified folder",
+			callback: () => {
+				new TestFuzzy(this, generateBook).open();
 			},
 		});
 
@@ -173,16 +184,20 @@ async function checkFolder(
 			: settings.foldersToIgnore
 					.filter((x) => x.trim() != "")
 					.some((f) => file.name.trim() == f.trim());
-	return Promise.resolve(!isFolderIgnore);
+	const isEmpty = settings.includeEmptyFolders
+		? false
+		: file.children.length == 0;
+	return Promise.resolve(!isFolderIgnore && !isEmpty);
 }
 
 function visitFolder(
 	sortingOpt: SortingSettings,
 	fileStr: TAbstractFile,
 	app: App,
+	onlyFolders = false,
 	depth = 0
 ): void {
-	if (isDocFile(fileStr)) {
+	if (isDocFile(fileStr) && !onlyFolders) {
 		const file: TFile = fileStr as TFile;
 		fileList.push({
 			type: "file",
@@ -242,7 +257,7 @@ function visitFolder(
 			return 0;
 		});
 		allChild.forEach((child) => {
-			visitFolder(sortingOpt, child, app, depth + 1);
+			visitFolder(sortingOpt, child, app, onlyFolders, depth + 1);
 		});
 	}
 }
@@ -296,10 +311,11 @@ async function generateBook(
 	console.log(generateTOCs);
 
 	// const files: TFile[] = await vault.getMarkdownFiles();
-	const files: TAbstractFile | null = await vault.getAbstractFileByPath(
-		startingFolder
-	);
-	if (files === null) {
+
+	const files: TAbstractFile | null = await vault.getAbstractFileByPath("/");
+	console.log(startingFolder);
+	console.log(files);
+	if (files === null || !isDocFolder(files)) {
 		console.error("Could not find folder: " + startingFolder);
 		if (startingFolder === "/") new Notice("Empty Vault");
 		else new Notice("Could not find folder: " + startingFolder);
@@ -312,7 +328,9 @@ async function generateBook(
 	};
 
 	visitFolder(sortingOpt, files, app);
-	const documents: fileStruct[] = fileList;
+	const documents: fileStruct[] = fileList.filter((d) =>
+		d.path.startsWith(startingFolder)
+	);
 	fileList = [];
 
 	console.log(documents);
@@ -343,7 +361,7 @@ async function generateBook(
 			documents,
 			{ ...settings }
 		);
-		if (i == 0) {
+		if (i == 0 && startingFolder == "/") {
 			content += `# ${vault.getName()}\n\n${
 				generateTOCs ? currToc : ""
 			}\n\n---\n\n${getSpacer(true)}\n\n`;
@@ -369,19 +387,21 @@ async function generateBook(
 	const { adapter } = vault;
 
 	try {
-		const fileExists = await adapter.exists(
-			path.join(startingFolder, `${vault.getName()}_book.md`)
-		);
+		const fileName = `${
+			vault.getName() +
+			(startingFolder == "/"
+				? ""
+				: startingFolder.replace(/\s+|\\|\//g, "-"))
+		}_book.md`;
+		const fileExists = await adapter.exists(fileName);
 		if (fileExists) {
 			console.log("File exists going into modal");
 			new ConfirmModal(
 				app,
 				"Overwrite",
-				`A file named ${vault.getName()}_book.md already exists. Do you want to overwrite it?`,
+				`A file named ${fileName} already exists. Do you want to overwrite it?`,
 				() => {
-					const file = vault.getAbstractFileByPath(
-						`${vault.getName()}_book.md`
-					);
+					const file = vault.getAbstractFileByPath(fileName);
 					console.log(file);
 					if (file === null) return;
 					vault
@@ -393,14 +413,12 @@ async function generateBook(
 				() => {}
 			).open();
 		} else {
-			const fileCreated = await vault.create(
-				path.join(startingFolder, `${vault.getName()}_book.md`),
-				content
-			);
+			const fileCreated = await vault.create(fileName, content);
 			app.workspace.getLeaf().openFile(fileCreated);
 		}
 	} catch (e) {
 		new Notice(e.toString());
+		console.log(e.toString());
 	}
 
 	return Promise.resolve(true);
@@ -468,6 +486,75 @@ class SampleModal extends Modal {
 	}
 }
 
+export class TestFuzzy extends FuzzySuggestModal<fileStruct> {
+	plugin: MyPlugin;
+	selectCallBack: any;
+	constructor(plugin: MyPlugin, selectCallBack: any) {
+		super(plugin.app);
+		this.plugin = plugin;
+		this.selectCallBack = selectCallBack;
+	}
+
+	getItems(): fileStruct[] {
+		const sortingOpt: SortingSettings = {
+			sortingStrategy: this.plugin.settings.sortingStrategy,
+			lowGraneSortingStrategy:
+				this.plugin.settings.lowGraneSortingStrategy,
+		};
+
+		visitFolder(sortingOpt, this.app.vault.getRoot(), super.app, true);
+		const files = [...fileList];
+		fileList = [];
+		return files;
+	}
+
+	getItemText(folder: fileStruct): string {
+		return folder.path;
+	}
+
+	onChooseItem(folder: fileStruct, evt: MouseEvent | KeyboardEvent) {
+		new Notice(`Selected ${folder.path}`);
+		this.selectCallBack(this.plugin.app, this.plugin.settings, folder.path);
+	}
+}
+
+export class GetPathModal extends Modal {
+	result: string;
+	onSubmit: (result: string) => void;
+
+	constructor(app: App, onSubmit: (result: string) => void) {
+		super(app);
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+
+		contentEl.createEl("h1", { text: "Path to folder to convert" });
+
+		new Setting(contentEl).setName("Name").addText((text) =>
+			text.onChange((value) => {
+				this.result = value;
+			})
+		);
+
+		new Setting(contentEl).addButton((btn) =>
+			btn
+				.setButtonText("Submit")
+				.setCta()
+				.onClick(() => {
+					this.close();
+					this.onSubmit(this.result);
+				})
+		);
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
 class SampleSettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
 
@@ -492,6 +579,19 @@ class SampleSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						console.log("Toggle: " + value);
 						this.plugin.settings.generateTOCs = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Include Empty folders")
+			.setDesc("Show titles of folders even if empty")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.includeEmptyFolders)
+					.onChange(async (value) => {
+						console.log("Toggle: " + value);
+						this.plugin.settings.includeEmptyFolders = value;
 						await this.plugin.saveSettings();
 					})
 			);

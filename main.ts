@@ -68,9 +68,7 @@ export default class PluginMainClass extends Plugin {
 
 		this.addSettingTab(new SettingsPage(this.app, this));
 
-		this.registerInterval(
-			window.setInterval(() => 5 * 60 * 1000)
-		);
+		this.registerInterval(window.setInterval(() => 5 * 60 * 1000));
 	}
 
 	onunload() {}
@@ -100,11 +98,6 @@ type fileStruct = {
 };
 
 let fileList: fileStruct[] = [];
-
-type SortingSettings = {
-	sortingStrategy: SortingStrategy;
-	lowGraneSortingStrategy: LowGraneSortingStrategy;
-};
 
 function isDocFile(file: TAbstractFile): boolean {
 	return file.hasOwnProperty("extension");
@@ -164,11 +157,11 @@ async function checkFile(
 	);
 }
 
-async function checkFolder(
+function checkFolder(
 	app: App,
 	file: TFolder,
 	settings: PluginSettings
-): Promise<boolean> {
+): boolean {
 	const isFolderIgnore =
 		settings.foldersToIgnore.length == 0
 			? false
@@ -178,11 +171,11 @@ async function checkFolder(
 	const isEmpty = settings.includeEmptyFolders
 		? false
 		: file.children.length == 0;
-	return Promise.resolve(!isFolderIgnore && !isEmpty);
+	return !isFolderIgnore && !isEmpty;
 }
 
 function visitFolder(
-	sortingOpt: SortingSettings,
+	settings: PluginSettings,
 	fileStr: TAbstractFile,
 	app: App,
 	onlyFolders = false,
@@ -214,7 +207,7 @@ function visitFolder(
 		allChild = allChild.sort((a, b) => {
 			if (isDocFolder(a) && isDocFile(b)) {
 				if (
-					sortingOpt.lowGraneSortingStrategy ===
+					settings.lowGraneSortingStrategy ===
 					LowGraneSortingStrategy.FILEFIRST
 				)
 					return 1;
@@ -223,7 +216,7 @@ function visitFolder(
 			}
 			if (isDocFile(a) && isDocFolder(b)) {
 				if (
-					sortingOpt.lowGraneSortingStrategy ===
+					settings.lowGraneSortingStrategy ===
 					LowGraneSortingStrategy.FILEFIRST
 				)
 					return -1;
@@ -238,7 +231,7 @@ function visitFolder(
 			if (isDocFile(a) && isDocFile(b)) {
 				const fileA: TFile = a as TFile;
 				const fileB: TFile = b as TFile;
-				switch (sortingOpt.sortingStrategy) {
+				switch (settings.sortingStrategy) {
 					case SortingStrategy.ALPHABETICAL:
 						return fileA.basename.localeCompare(fileB.basename);
 					case SortingStrategy.CREATION_TIME:
@@ -247,9 +240,16 @@ function visitFolder(
 			}
 			return 0;
 		});
-		allChild.forEach((child) => {
-			visitFolder(sortingOpt, child, app, onlyFolders, depth + 1);
-		});
+
+		for (let i = 0; i < allChild.length; i++) {
+			const child = allChild[i];
+			if (
+				isDocFolder(child) &&
+				!checkFolder(app, child as TFolder, settings)
+			)
+				continue;
+			visitFolder(settings, child, app, onlyFolders, depth + 1);
+		}
 	}
 }
 
@@ -300,7 +300,6 @@ async function generateBook(
 
 	const generateTOCs = settings.generateTOCs;
 
-
 	const files: TAbstractFile | null = await vault.getAbstractFileByPath("/");
 	if (files === null || !isDocFolder(files)) {
 		console.error("Could not find folder: " + startingFolder);
@@ -309,28 +308,20 @@ async function generateBook(
 		return Promise.resolve(false);
 	}
 
-	const sortingOpt: SortingSettings = {
-		sortingStrategy: settings.sortingStrategy,
-		lowGraneSortingStrategy: settings.lowGraneSortingStrategy,
-	};
-
-	visitFolder(sortingOpt, files, app);
+	visitFolder(settings, files, app);
 	const documents: fileStruct[] = fileList.filter((d) =>
 		d.path.startsWith(startingFolder)
 	);
 	fileList = [];
 
-
-	let content = `<!--book-ignore-->\n\n`;
+	let content = `\n`;
 
 	for (let i = 0; i < documents.length; i++) {
 		const file = documents[i];
 		if (file.type === "folder") {
-			const isFolderValid = await checkFolder(
-				app,
-				file.document as TFolder,
-				{ ...settings }
-			);
+			const isFolderValid = checkFolder(app, file.document as TFolder, {
+				...settings,
+			});
 			if (!isFolderValid) continue;
 		}
 		if (file.type === "file") {
@@ -367,6 +358,8 @@ async function generateBook(
 			}
 		}
 	}
+
+	content += "\n\n<!--book-ignore-->\n<!--dont-delete-these-comments-->";
 
 	const { adapter } = vault;
 
@@ -461,13 +454,12 @@ export class PathFuzzy extends FuzzySuggestModal<fileStruct> {
 	}
 
 	getItems(): fileStruct[] {
-		const sortingOpt: SortingSettings = {
-			sortingStrategy: this.plugin.settings.sortingStrategy,
-			lowGraneSortingStrategy:
-				this.plugin.settings.lowGraneSortingStrategy,
-		};
-
-		visitFolder(sortingOpt, this.app.vault.getRoot(), super.app, true);
+		visitFolder(
+			this.plugin.settings,
+			this.app.vault.getRoot(),
+			super.app,
+			true
+		);
 		const files = [...fileList];
 		fileList = [];
 		return files;

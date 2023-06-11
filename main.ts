@@ -316,6 +316,8 @@ async function generateBook(
 
 	let content = `\n`;
 
+	content += "\n<!--book-ignore-->\n<!--dont-delete-these-comments-->\n\n";
+		
 	for (let i = 0; i < documents.length; i++) {
 		const file = documents[i];
 		if (file.type === "folder") {
@@ -358,8 +360,6 @@ async function generateBook(
 			}
 		}
 	}
-
-	content += "\n\n<!--book-ignore-->\n<!--dont-delete-these-comments-->";
 
 	const { adapter } = vault;
 

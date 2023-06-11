@@ -291,7 +291,7 @@ function getSpacer(isFullPage = false): string {
 	return '<div style="height: 200px;"></div>';
 }
 
-const clamp = (number, min, max) =>
+const clamp = (number: number, min: number, max: number):number =>
    Math.max(min, Math.min(number, max));
 
 async function generateBook(

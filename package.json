@@ -1,5 +1,5 @@
 {
-	"name": "obsidian2book",
+	"name": "obsidian-2-book",
 	"version": "1.0.0",
 	"description": "Converts your notes to a book",
 	"main": "main.js",

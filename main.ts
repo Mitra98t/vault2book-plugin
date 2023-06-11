@@ -1,3 +1,4 @@
+/* eslint-disable no-mixed-spaces-and-tabs */
 import {
 	App,
 	Modal,
@@ -25,21 +26,22 @@ enum LowGraneSortingStrategy {
 }
 
 interface MyPluginSettings {
-	foldersToIgnore: string;
-	filesToIgnore: string;
-	tagsToIgnore: string;
-	extensionsToIgnore: string;
+	foldersToIgnore: string[];
+	filesToIgnore: string[];
+	tagsToIgnore: string[];
+	extensionsToIgnore: string[];
 	generateTOCs: boolean;
 	sortingStrategy: SortingStrategy;
 	lowGraneSortingStrategy: LowGraneSortingStrategy;
+	// TODO remove this thing
 	elements: string[];
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-	foldersToIgnore: "",
-	filesToIgnore: "",
-	tagsToIgnore: "",
-	extensionsToIgnore: "",
+	foldersToIgnore: [],
+	filesToIgnore: [],
+	tagsToIgnore: [],
+	extensionsToIgnore: [],
 	generateTOCs: true,
 	sortingStrategy: SortingStrategy.ALPHABETICAL,
 	lowGraneSortingStrategy: LowGraneSortingStrategy.FILEFIRST,
@@ -119,7 +121,9 @@ function isDocFolder(file: TAbstractFile): boolean {
 }
 
 function lineIncludesTag(line: string, tag: string[]): boolean {
-	return tag.some((t) => line.toLowerCase().includes(t.trim().toLowerCase()));
+	return tag
+		.filter((x) => x.trim() != "")
+		.some((t) => line.toLowerCase().includes("#" + t.trim().toLowerCase()));
 }
 
 /**
@@ -133,26 +137,25 @@ async function checkFile(
 	const fileContent = await app.vault.read(file);
 	const isBookIgnore = fileContent.includes("<!--book-ignore-->");
 	const isTagIgnore =
-		settings.tagsToIgnore.trim().length == 0
+		settings.tagsToIgnore.length == 0
 			? false
 			: fileContent
 					.split(/\n/)
-					.filter((l) =>
-						lineIncludesTag(l, settings.tagsToIgnore.split(","))
-					).length > 0;
+					.filter((l) => lineIncludesTag(l, settings.tagsToIgnore))
+					.length > 0;
 
 	const isExtIgnore =
-		settings.extensionsToIgnore.trim().length == 0
+		settings.extensionsToIgnore.length == 0
 			? false
 			: settings.extensionsToIgnore
-					.split(",")
+					.filter((x) => x.trim() != "")
 					.some((ext) => ("." + file.extension).includes(ext.trim()));
 	const isFileIgnore =
-		settings.filesToIgnore.trim().length == 0
+		settings.filesToIgnore.length == 0
 			? false
 			: settings.filesToIgnore
-					.split(",")
-					.some((f) => file.name.includes(f.trim()));
+					.filter((x) => x.trim() != "")
+					.some((f) => file.name.trim() == f.trim());
 
 	return Promise.resolve(
 		!isBookIgnore && !isTagIgnore && !isExtIgnore && !isFileIgnore
@@ -165,11 +168,11 @@ async function checkFolder(
 	settings: MyPluginSettings
 ): Promise<boolean> {
 	const isFolderIgnore =
-		settings.foldersToIgnore.trim().length == 0
+		settings.foldersToIgnore.length == 0
 			? false
 			: settings.foldersToIgnore
-					.split(",")
-					.some((f) => file.name.includes(f.trim()));
+					.filter((x) => x.trim() != "")
+					.some((f) => file.name.trim() == f.trim());
 	return Promise.resolve(!isFolderIgnore);
 }
 
@@ -381,16 +384,21 @@ async function generateBook(
 					);
 					console.log(file);
 					if (file === null) return;
-					vault.modify(file as TFile, content);
-					console.log("modidfied");
+					vault
+						.modify(file as TFile, content)
+						.then(() =>
+							app.workspace.getLeaf().openFile(file as TFile)
+						);
 				},
 				() => {}
 			).open();
-		} else
-			await vault.create(
+		} else {
+			const fileCreated = await vault.create(
 				path.join(startingFolder, `${vault.getName()}_book.md`),
 				content
 			);
+			app.workspace.getLeaf().openFile(fileCreated);
+		}
 	} catch (e) {
 		new Notice(e.toString());
 	}
@@ -476,66 +484,6 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.createEl("h2", { text: "Settings for my awesome plugin." });
 
 		new Setting(containerEl)
-			.setName("Ignore files name")
-			.setDesc(
-				"name of files to ignore separated by comma: README.md, LICENSE.md"
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("Enter file names")
-					.setValue(this.plugin.settings.filesToIgnore)
-					.onChange(async (value) => {
-						console.log("Pattern: " + value);
-						this.plugin.settings.filesToIgnore = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Ignore files extensions")
-			.setDesc(
-				"List extensions of files to ignore separated by comma: .md, .txt"
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("Enter extensions")
-					.setValue(this.plugin.settings.extensionsToIgnore)
-					.onChange(async (value) => {
-						console.log("Pattern: " + value);
-						this.plugin.settings.extensionsToIgnore = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Ignore folder patterns")
-			.setDesc("Folders to ignore separated by comma: media, templates")
-			.addText((text) =>
-				text
-					.setPlaceholder("Enter folder names")
-					.setValue(this.plugin.settings.foldersToIgnore)
-					.onChange(async (value) => {
-						console.log("Secret: " + value);
-						this.plugin.settings.foldersToIgnore = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Ignore tags")
-			.setDesc("Describe a tags ignore separated by comma: index, todo")
-			.addText((text) =>
-				text
-					.setPlaceholder("Enter tags")
-					.setValue(this.plugin.settings.tagsToIgnore)
-					.onChange(async (value) => {
-						console.log("Secret: " + value);
-						this.plugin.settings.tagsToIgnore = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
 			.setName("Generate TOCs")
 			.setDesc("Generate Tablo of Contents for all directories")
 			.addToggle((toggle) =>
@@ -584,39 +532,147 @@ class SampleSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Add Element")
-			.setDesc("Add an element to the settings")
+			.setName("Add file to ignore")
+			.setDesc("Add file name to the list of file to be ignored")
 			.addButton((button) =>
 				button.setButtonText("Add Element").onClick(async () => {
-					this.plugin.settings.elements.push("");
-					console.log(this.plugin.settings.elements);
+					this.plugin.settings.filesToIgnore.push("");
 					await this.plugin.saveSettings();
 					this.display();
 				})
 			);
 
-		for (let i = 0; i < this.plugin.settings.elements.length; i++) {
-			const element = this.plugin.settings.elements[i];
+		for (let i = 0; i < this.plugin.settings.filesToIgnore.length; i++) {
+			const element = this.plugin.settings.filesToIgnore[i];
 			new Setting(containerEl)
-				.setName("Element " + i)
-				.setDesc("set element text")
+				.setName("File to ignore " + i)
+				.setDesc("Set file name to ignore")
 				.addText((text) =>
 					text
-						.setPlaceholder("Enter element text")
+						.setPlaceholder("Enter file name")
 						.setValue(element)
 						.onChange(async (value) => {
 							console.log("Element: " + value);
-							this.plugin.settings.elements[i] = value;
+							this.plugin.settings.filesToIgnore[i] = value;
 							await this.plugin.saveSettings();
 						})
 				)
-				.addButton((button)=>
-			button.setButtonText('-').onClick(async () => {
-				this.plugin.settings.elements.splice(i, 1)
-				await this.plugin.saveSettings()
-				this.display();
-			})
+				.addButton((button) =>
+					button.setButtonText("-").onClick(async () => {
+						this.plugin.settings.filesToIgnore.splice(i, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+				);
+		}
+
+		new Setting(containerEl)
+			.setName("Add extension to ignore")
+			.setDesc("Add extension to the list of extensions to be ignored")
+			.addButton((button) =>
+				button.setButtonText("Add Element").onClick(async () => {
+					this.plugin.settings.extensionsToIgnore.push("");
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		for (
+			let i = 0;
+			i < this.plugin.settings.extensionsToIgnore.length;
+			i++
+		) {
+			const element = this.plugin.settings.extensionsToIgnore[i];
+			new Setting(containerEl)
+				.setName("Extension to ignore " + i)
+				.setDesc("Set exntesion to ignore")
+				.addText((text) =>
+					text
+						.setPlaceholder("Enter exntesion")
+						.setValue(element)
+						.onChange(async (value) => {
+							console.log("Element: " + value);
+							this.plugin.settings.extensionsToIgnore[i] = value;
+							await this.plugin.saveSettings();
+						})
 				)
+				.addButton((button) =>
+					button.setButtonText("-").onClick(async () => {
+						this.plugin.settings.extensionsToIgnore.splice(i, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+				);
+		}
+
+		new Setting(containerEl)
+			.setName("Add folder to ignore")
+			.setDesc("Add folder name to the list of folder to be ignored")
+			.addButton((button) =>
+				button.setButtonText("Add Element").onClick(async () => {
+					this.plugin.settings.foldersToIgnore.push("");
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		for (let i = 0; i < this.plugin.settings.foldersToIgnore.length; i++) {
+			const element = this.plugin.settings.foldersToIgnore[i];
+			new Setting(containerEl)
+				.setName("Folder to ignore " + i)
+				.setDesc("Set folder name to ignore")
+				.addText((text) =>
+					text
+						.setPlaceholder("Enter folder name")
+						.setValue(element)
+						.onChange(async (value) => {
+							console.log("Element: " + value);
+							this.plugin.settings.foldersToIgnore[i] = value;
+							await this.plugin.saveSettings();
+						})
+				)
+				.addButton((button) =>
+					button.setButtonText("-").onClick(async () => {
+						this.plugin.settings.foldersToIgnore.splice(i, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+				);
+		}
+
+		new Setting(containerEl)
+			.setName("Add tags to ignore")
+			.setDesc("Add tags name to the list of tags to be ignored")
+			.addButton((button) =>
+				button.setButtonText("Add Element").onClick(async () => {
+					this.plugin.settings.tagsToIgnore.push("");
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		for (let i = 0; i < this.plugin.settings.tagsToIgnore.length; i++) {
+			const element = this.plugin.settings.tagsToIgnore[i];
+			new Setting(containerEl)
+				.setName("Tag to ignore " + i)
+				.setDesc("Set tag to ignore")
+				.addText((text) =>
+					text
+						.setPlaceholder("Enter tag")
+						.setValue(element)
+						.onChange(async (value) => {
+							console.log("Element: " + value);
+							this.plugin.settings.tagsToIgnore[i] = value;
+							await this.plugin.saveSettings();
+						})
+				)
+				.addButton((button) =>
+					button.setButtonText("-").onClick(async () => {
+						this.plugin.settings.tagsToIgnore.splice(i, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+				);
 		}
 	}
 }

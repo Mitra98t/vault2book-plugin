@@ -1,6 +1,6 @@
 {
 	"id": "obsidian2book",
-	"name": "Plugin di Test",
+	"name": "Obsidian 2 Book",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Converts your notes to a book",

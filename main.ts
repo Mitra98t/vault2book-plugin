@@ -10,28 +10,40 @@ import {
 	TFolder,
 } from "obsidian";
 
+import * as path from "path";
+
 // Remember to rename these classes and interfaces!
 
 enum SortingStrategy {
 	ALPHABETICAL = "alphabetical",
 	CREATION_TIME = "creation time",
-	MODIFICATION_TIME = "modification time",
+}
+
+enum LowGraneSortingStrategy {
+	FILEFIRST = "file first",
+	FOLDERFIRST = "folder first",
 }
 
 interface MyPluginSettings {
 	foldersToIgnore: string;
 	filesToIgnore: string;
 	tagsToIgnore: string;
+	extensionsToIgnore: string;
 	generateTOCs: boolean;
 	sortingStrategy: SortingStrategy;
+	lowGraneSortingStrategy: LowGraneSortingStrategy;
+	elements: string[];
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
 	foldersToIgnore: "",
 	filesToIgnore: "",
 	tagsToIgnore: "",
+	extensionsToIgnore: "",
 	generateTOCs: true,
 	sortingStrategy: SortingStrategy.ALPHABETICAL,
+	lowGraneSortingStrategy: LowGraneSortingStrategy.FILEFIRST,
+	elements: [],
 };
 
 export default class MyPlugin extends Plugin {
@@ -88,49 +100,178 @@ type fileStruct = {
 	creationTime?: number;
 	modificationTime?: number;
 	depth: number;
+	document: TAbstractFile;
 };
 
 let fileList: fileStruct[] = [];
-function visitFolder(fileStr: TAbstractFile, depth = 0): void {
-	if (fileStr.hasOwnProperty("extension")) {
+
+type SortingSettings = {
+	sortingStrategy: SortingStrategy;
+	lowGraneSortingStrategy: LowGraneSortingStrategy;
+};
+
+function isDocFile(file: TAbstractFile): boolean {
+	return file.hasOwnProperty("extension");
+}
+
+function isDocFolder(file: TAbstractFile): boolean {
+	return file.hasOwnProperty("children");
+}
+
+function lineIncludesTag(line: string, tag: string[]): boolean {
+	return tag.some((t) => line.toLowerCase().includes(t.trim().toLowerCase()));
+}
+
+/**
+ * true if file is valid false if file is to be ignored
+ */
+async function checkFile(
+	app: App,
+	file: TFile,
+	settings: MyPluginSettings
+): Promise<boolean> {
+	const fileContent = await app.vault.read(file);
+	const isBookIgnore = fileContent.includes("<!--book-ignore-->");
+	const isTagIgnore =
+		settings.tagsToIgnore.trim().length == 0
+			? false
+			: fileContent
+					.split(/\n/)
+					.filter((l) =>
+						lineIncludesTag(l, settings.tagsToIgnore.split(","))
+					).length > 0;
+
+	const isExtIgnore =
+		settings.extensionsToIgnore.trim().length == 0
+			? false
+			: settings.extensionsToIgnore
+					.split(",")
+					.some((ext) => ("." + file.extension).includes(ext.trim()));
+	const isFileIgnore =
+		settings.filesToIgnore.trim().length == 0
+			? false
+			: settings.filesToIgnore
+					.split(",")
+					.some((f) => file.name.includes(f.trim()));
+
+	return Promise.resolve(
+		!isBookIgnore && !isTagIgnore && !isExtIgnore && !isFileIgnore
+	);
+}
+
+async function checkFolder(
+	app: App,
+	file: TFolder,
+	settings: MyPluginSettings
+): Promise<boolean> {
+	const isFolderIgnore =
+		settings.foldersToIgnore.trim().length == 0
+			? false
+			: settings.foldersToIgnore
+					.split(",")
+					.some((f) => file.name.includes(f.trim()));
+	return Promise.resolve(!isFolderIgnore);
+}
+
+function visitFolder(
+	sortingOpt: SortingSettings,
+	fileStr: TAbstractFile,
+	app: App,
+	depth = 0
+): void {
+	if (isDocFile(fileStr)) {
 		const file: TFile = fileStr as TFile;
 		fileList.push({
 			type: "file",
-			path: file.path,
+			path: (depth > 0 ? "/" : "") + file.path,
 			name: file.name,
 			graphicName: file.basename,
 			creationTime: file.stat.ctime,
 			modificationTime: file.stat.mtime,
 			depth,
+			document: file,
 		});
-	} else if (fileStr.hasOwnProperty("children")) {
+	} else if (isDocFolder(fileStr)) {
 		const dir: TFolder = fileStr as TFolder;
 		fileList.push({
 			type: "folder",
-			path: dir.path,
+			path: (depth > 0 ? "/" : "") + dir.path,
 			name: dir.name,
 			graphicName: dir.name,
 			depth,
+			document: dir,
 		});
-		// TODO: sort children
-		dir.children.forEach((child) => {
-			visitFolder(child, depth + 1);
+		let allChild: TAbstractFile[] = dir.children;
+		allChild = allChild.sort((a, b) => {
+			if (isDocFolder(a) && isDocFile(b)) {
+				if (
+					sortingOpt.lowGraneSortingStrategy ===
+					LowGraneSortingStrategy.FILEFIRST
+				)
+					return 1;
+				// Folder First
+				else return -1;
+			}
+			if (isDocFile(a) && isDocFolder(b)) {
+				if (
+					sortingOpt.lowGraneSortingStrategy ===
+					LowGraneSortingStrategy.FILEFIRST
+				)
+					return -1;
+				// Folder First
+				else return 1;
+			}
+			if (isDocFolder(a) && isDocFolder(b)) {
+				const dirA: TFolder = a as TFolder;
+				const dirB: TFolder = b as TFolder;
+				return dirA.name.localeCompare(dirB.name);
+			}
+			if (isDocFile(a) && isDocFile(b)) {
+				const fileA: TFile = a as TFile;
+				const fileB: TFile = b as TFile;
+				switch (sortingOpt.sortingStrategy) {
+					case SortingStrategy.ALPHABETICAL:
+						return fileA.basename.localeCompare(fileB.basename);
+					case SortingStrategy.CREATION_TIME:
+						return fileA.stat.ctime - fileB.stat.ctime;
+				}
+			}
+			return 0;
+		});
+		allChild.forEach((child) => {
+			visitFolder(sortingOpt, child, app, depth + 1);
 		});
 	}
 }
 
-function getTableOfContent(currPath: string, currDepth: number): string {
+async function getTableOfContent(
+	currPath: string,
+	currDepth: number,
+	fileList: fileStruct[],
+	settings: MyPluginSettings
+): Promise<string> {
 	const tocArray: fileStruct[] = [...fileList].filter(
 		(file) => file.depth === currDepth + 1 && file.path.includes(currPath)
 	);
 	let toc = "";
-	tocArray.forEach((file) => {
+	for (let i = 0; i < tocArray.length; i++) {
+		const file = tocArray[i];
 		if (file.type === "folder") {
-			toc += `📂 [[#${file.graphicName}]]\n`;
+			const isFolderValid = await checkFolder(
+				app,
+				file.document as TFolder,
+				{ ...settings }
+			);
+			if (isFolderValid) toc += `📂 [[#${file.graphicName}]]\n`;
 		} else {
-			toc += `📄 [[#${file.graphicName}]]\n`;
+			const isFileValid = await checkFile(
+				app,
+				file.document as TFile,
+				settings
+			);
+			if (isFileValid) toc += `📄 [[#${file.graphicName}]]\n`;
 		}
-	});
+	}
 	return toc;
 }
 
@@ -148,10 +289,8 @@ async function generateBook(
 ): Promise<boolean> {
 	const { vault } = app;
 
-	// const foldersToIgnore = settings.foldersToIgnore.split(",");
-	// const filesToIgnore = settings.filesToIgnore.split(",");
-	// const tagsToIgnore = settings.tagsToIgnore.split(",");
 	const generateTOCs = settings.generateTOCs;
+	console.log(generateTOCs);
 
 	// const files: TFile[] = await vault.getMarkdownFiles();
 	const files: TAbstractFile | null = await vault.getAbstractFileByPath(
@@ -163,17 +302,47 @@ async function generateBook(
 		else new Notice("Could not find folder: " + startingFolder);
 		return Promise.resolve(false);
 	}
-	visitFolder(files);
+
+	const sortingOpt: SortingSettings = {
+		sortingStrategy: settings.sortingStrategy,
+		lowGraneSortingStrategy: settings.lowGraneSortingStrategy,
+	};
+
+	visitFolder(sortingOpt, files, app);
 	const documents: fileStruct[] = fileList;
 	fileList = [];
 
-	let content = "";
+	console.log(documents);
+
+	let content = `<!--book-ignore-->\n\n`;
 
 	for (let i = 0; i < documents.length; i++) {
 		const file = documents[i];
+		if (file.type === "folder") {
+			const isFolderValid = await checkFolder(
+				app,
+				file.document as TFolder,
+				{ ...settings }
+			);
+			if (!isFolderValid) continue;
+		}
+		if (file.type === "file") {
+			const isFileValid = await checkFile(app, file.document as TFile, {
+				...settings,
+			});
+			console.log(file.name);
+			console.log(isFileValid);
+			if (!isFileValid) continue;
+		}
+		const currToc = await getTableOfContent(
+			file.path,
+			file.depth,
+			documents,
+			{ ...settings }
+		);
 		if (i == 0) {
-			content += `# ${file.graphicName}\n\n${
-				generateTOCs ? getTableOfContent(file.path, file.depth) : ""
+			content += `# ${vault.getName()}\n\n${
+				generateTOCs ? currToc : ""
 			}\n\n---\n\n${getSpacer(true)}\n\n`;
 		} else {
 			if (file.type === "folder") {
@@ -182,7 +351,7 @@ async function generateBook(
 				}\n\n${new Array(file.depth > 6 ? 6 : file.depth)
 					.fill("#")
 					.join("")} ${file.graphicName}\n\n${
-					generateTOCs ? getTableOfContent(file.path, file.depth) : ""
+					generateTOCs ? currToc : ""
 				}\n\n---\n\n`;
 			} else {
 				content += `\n\n${new Array(file.depth > 6 ? 6 : file.depth)
@@ -194,9 +363,85 @@ async function generateBook(
 		}
 	}
 
-	console.log(content);
+	const { adapter } = vault;
+
+	try {
+		const fileExists = await adapter.exists(
+			path.join(startingFolder, `${vault.getName()}_book.md`)
+		);
+		if (fileExists) {
+			console.log("File exists going into modal");
+			new ConfirmModal(
+				app,
+				"Overwrite",
+				`A file named ${vault.getName()}_book.md already exists. Do you want to overwrite it?`,
+				() => {
+					const file = vault.getAbstractFileByPath(
+						`${vault.getName()}_book.md`
+					);
+					console.log(file);
+					if (file === null) return;
+					vault.modify(file as TFile, content);
+					console.log("modidfied");
+				},
+				() => {}
+			).open();
+		} else
+			await vault.create(
+				path.join(startingFolder, `${vault.getName()}_book.md`),
+				content
+			);
+	} catch (e) {
+		new Notice(e.toString());
+	}
 
 	return Promise.resolve(true);
+}
+
+class ConfirmModal extends Modal {
+	private confirmCallback: () => void;
+	private cancelCallback: () => void;
+
+	constructor(
+		app: App,
+		title: string,
+		content: string,
+		confirmCallback: () => void,
+		cancelCallback: () => void
+	) {
+		super(app);
+		this.titleEl.setText(title);
+		this.contentEl.setText(content);
+		this.confirmCallback = confirmCallback;
+		this.cancelCallback = cancelCallback;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
+			div.createEl(
+				"button",
+				{ text: "Confirm", cls: "mod-cta" },
+				(button) => {
+					button.onClickEvent(() => {
+						this.close();
+						this.confirmCallback();
+					});
+				}
+			);
+			div.createEl("button", { text: "Cancel" }, (button) => {
+				button.onClickEvent(() => {
+					this.close();
+					this.cancelCallback();
+				});
+			});
+		});
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
 }
 
 class SampleModal extends Modal {
@@ -231,13 +476,13 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.createEl("h2", { text: "Settings for my awesome plugin." });
 
 		new Setting(containerEl)
-			.setName("Ignore files pattern")
+			.setName("Ignore files name")
 			.setDesc(
-				"Describe a pattern of files to ignore separated by comma: *.png, *.jpg"
+				"name of files to ignore separated by comma: README.md, LICENSE.md"
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("Enter patterns")
+					.setPlaceholder("Enter file names")
 					.setValue(this.plugin.settings.filesToIgnore)
 					.onChange(async (value) => {
 						console.log("Pattern: " + value);
@@ -247,13 +492,27 @@ class SampleSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Ignore folder patterns")
+			.setName("Ignore files extensions")
 			.setDesc(
-				"Describe a pattern of folders to ignore separated by comma: template, media"
+				"List extensions of files to ignore separated by comma: .md, .txt"
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("Enter patterns")
+					.setPlaceholder("Enter extensions")
+					.setValue(this.plugin.settings.extensionsToIgnore)
+					.onChange(async (value) => {
+						console.log("Pattern: " + value);
+						this.plugin.settings.extensionsToIgnore = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Ignore folder patterns")
+			.setDesc("Folders to ignore separated by comma: media, templates")
+			.addText((text) =>
+				text
+					.setPlaceholder("Enter folder names")
 					.setValue(this.plugin.settings.foldersToIgnore)
 					.onChange(async (value) => {
 						console.log("Secret: " + value);
@@ -296,10 +555,6 @@ class SampleSettingTab extends PluginSettingTab {
 				dropdown
 					.addOption(SortingStrategy.ALPHABETICAL, "Alphabetical")
 					.addOption(SortingStrategy.CREATION_TIME, "Creation time")
-					.addOption(
-						SortingStrategy.MODIFICATION_TIME,
-						"Modification time"
-					)
 					.setValue(this.plugin.settings.sortingStrategy)
 					.onChange(async (value) => {
 						console.log("Dropdown: " + value);
@@ -308,5 +563,60 @@ class SampleSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		new Setting(containerEl)
+			.setName("Sorting order")
+			.setDesc("Sorting order for the book")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption(LowGraneSortingStrategy.FILEFIRST, "File First")
+					.addOption(
+						LowGraneSortingStrategy.FOLDERFIRST,
+						"Folder First"
+					)
+					.setValue(this.plugin.settings.lowGraneSortingStrategy)
+					.onChange(async (value) => {
+						console.log("Dropdown: " + value);
+						this.plugin.settings.lowGraneSortingStrategy =
+							value as LowGraneSortingStrategy;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Add Element")
+			.setDesc("Add an element to the settings")
+			.addButton((button) =>
+				button.setButtonText("Add Element").onClick(async () => {
+					this.plugin.settings.elements.push("");
+					console.log(this.plugin.settings.elements);
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		for (let i = 0; i < this.plugin.settings.elements.length; i++) {
+			const element = this.plugin.settings.elements[i];
+			new Setting(containerEl)
+				.setName("Element " + i)
+				.setDesc("set element text")
+				.addText((text) =>
+					text
+						.setPlaceholder("Enter element text")
+						.setValue(element)
+						.onChange(async (value) => {
+							console.log("Element: " + value);
+							this.plugin.settings.elements[i] = value;
+							await this.plugin.saveSettings();
+						})
+				)
+				.addButton((button)=>
+			button.setButtonText('-').onClick(async () => {
+				this.plugin.settings.elements.splice(i, 1)
+				await this.plugin.saveSettings()
+				this.display();
+			})
+				)
+		}
 	}
 }

@@ -376,6 +376,7 @@ async function generateBook(
 
 	content += "\n<!--book-ignore-->\n<!--dont-delete-these-comments-->\n\n";
 
+	console.log(documents);
 	for (let i = 0; i < documents.length; i++) {
 		const file = documents[i];
 		if (file.type === "folder") {
@@ -410,7 +411,7 @@ async function generateBook(
 					generateTOCs ? currToc : ""
 				}\n\n---\n\n`;
 			} else {
-				content += `\n\n${titleMD} ${file.graphicName}\n\n![[${file.name}]]\n\n---\n\n`;
+				content += `\n\n${titleMD} ${file.graphicName}\n\n![[${file.path}|${file.name}]]\n\n---\n\n`;
 			}
 		}
 	}

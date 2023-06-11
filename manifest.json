@@ -1,9 +1,9 @@
 {
-	"id": "test-plugin",
+	"id": "obsidian2book",
 	"name": "Plugin di Test",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Plugin di test. This plugin demonstrates some of the capabilities of the Obsidian API.",
+	"description": "Converts your notes to a book",
 	"author": "Mitra98t",
 	"authorUrl": "https://github.com/Mitra98t",
 	"isDesktopOnly": false

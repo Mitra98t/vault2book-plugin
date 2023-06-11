@@ -12,10 +12,6 @@ import {
 	TFolder,
 } from "obsidian";
 
-// import * as path from "path";
-
-// Remember to rename these classes and interfaces!
-
 enum SortingStrategy {
 	ALPHABETICAL = "alphabetical",
 	CREATION_TIME = "creation time",
@@ -26,7 +22,7 @@ enum LowGraneSortingStrategy {
 	FOLDERFIRST = "folder first",
 }
 
-interface MyPluginSettings {
+interface PluginSettings {
 	foldersToIgnore: string[];
 	filesToIgnore: string[];
 	tagsToIgnore: string[];
@@ -35,11 +31,9 @@ interface MyPluginSettings {
 	includeEmptyFolders: boolean;
 	sortingStrategy: SortingStrategy;
 	lowGraneSortingStrategy: LowGraneSortingStrategy;
-	// TODO remove this thing
-	elements: string[];
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
+const DEFAULT_SETTINGS: PluginSettings = {
 	foldersToIgnore: [],
 	filesToIgnore: [],
 	tagsToIgnore: [],
@@ -48,23 +42,13 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	includeEmptyFolders: false,
 	sortingStrategy: SortingStrategy.ALPHABETICAL,
 	lowGraneSortingStrategy: LowGraneSortingStrategy.FILEFIRST,
-	elements: [],
 };
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class PluginMainClass extends Plugin {
+	settings: PluginSettings;
 
 	async onload() {
 		await this.loadSettings();
-
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: "open-sample-modal-simple",
-			name: "Open sample modal (simple)",
-			callback: () => {
-				new SampleModal(this.app).open();
-			},
-		});
 
 		this.addCommand({
 			id: "generate-vault-book",
@@ -82,10 +66,8 @@ export default class MyPlugin extends Plugin {
 			},
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(
 			window.setInterval(() => console.log("setInterval"), 5 * 60 * 1000)
 		);
@@ -105,6 +87,7 @@ export default class MyPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 }
+
 type fileStruct = {
 	type: "file" | "folder";
 	path: string;
@@ -132,9 +115,17 @@ function isDocFolder(file: TAbstractFile): boolean {
 }
 
 function lineIncludesTag(line: string, tag: string[]): boolean {
-	return tag
+	const foundTagStandardForm = tag
 		.filter((x) => x.trim() != "")
 		.some((t) => line.toLowerCase().includes("#" + t.trim().toLowerCase()));
+	const foundTagMetadataForm =
+		(line.replace(/\s+/, "").startsWith("tag:") ||
+			line.replace(/\s+/, "").startsWith("tags:")) &&
+		tag
+			.filter((x) => x.trim() != "")
+			.some((t) => line.toLowerCase().includes(t.trim().toLowerCase()));
+
+	return foundTagStandardForm || foundTagMetadataForm;
 }
 
 /**
@@ -143,7 +134,7 @@ function lineIncludesTag(line: string, tag: string[]): boolean {
 async function checkFile(
 	app: App,
 	file: TFile,
-	settings: MyPluginSettings
+	settings: PluginSettings
 ): Promise<boolean> {
 	const fileContent = await app.vault.read(file);
 	const isBookIgnore = fileContent.includes("<!--book-ignore-->");
@@ -176,7 +167,7 @@ async function checkFile(
 async function checkFolder(
 	app: App,
 	file: TFolder,
-	settings: MyPluginSettings
+	settings: PluginSettings
 ): Promise<boolean> {
 	const isFolderIgnore =
 		settings.foldersToIgnore.length == 0
@@ -266,7 +257,7 @@ async function getTableOfContent(
 	currPath: string,
 	currDepth: number,
 	fileList: fileStruct[],
-	settings: MyPluginSettings
+	settings: PluginSettings
 ): Promise<string> {
 	const tocArray: fileStruct[] = [...fileList].filter(
 		(file) => file.depth === currDepth + 1 && file.path.includes(currPath)
@@ -302,7 +293,7 @@ function getSpacer(isFullPage = false): string {
 
 async function generateBook(
 	app: App,
-	settings: MyPluginSettings,
+	settings: PluginSettings,
 	startingFolder = "/"
 ): Promise<boolean> {
 	const { vault } = app;
@@ -487,9 +478,9 @@ class SampleModal extends Modal {
 }
 
 export class TestFuzzy extends FuzzySuggestModal<fileStruct> {
-	plugin: MyPlugin;
+	plugin: PluginMainClass;
 	selectCallBack: any;
-	constructor(plugin: MyPlugin, selectCallBack: any) {
+	constructor(plugin: PluginMainClass, selectCallBack: any) {
 		super(plugin.app);
 		this.plugin = plugin;
 		this.selectCallBack = selectCallBack;
@@ -556,9 +547,9 @@ export class GetPathModal extends Modal {
 }
 
 class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+	plugin: PluginMainClass;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: PluginMainClass) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

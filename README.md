@@ -5,13 +5,13 @@
 > **Note:** This plugin is not yet available in the official Obsidian plugin library. You can install it manually by following the instructions below.
 
 1. Install [Node.js](https://nodejs.org/en/download/)
-1. Install [Obsidian](https://obsidian.md/)
-2. Enable third party plugin in Obsidian settings: `Settings > Third-party plugin > Obsidian 2 Book > Enable`
-3. Navigate to the plugins folder on your machine: `VaultFolder/.obsidian/plugins/`
-4. Clone the [Obsidian 2 Book](https://github.com/Mitra98t/obsidian2book-plugin) repository inside the plugin folder
-5. Run `npm install` inside the repository folder
-6. Run `npm run build` inside the repository folder
-7. In Obsidian, make sure the plugin is enabled in `Settings > Third-party plugin > Obsidian 2 Book > Enable`
+2. Install [Obsidian](https://obsidian.md/)
+3. Enable third party plugin in Obsidian settings: `Settings > Community Plugins > Enable`
+4. Navigate to the plugins folder on your machine: `VaultFolder/.obsidian/plugins/` (if the folder doesn't exist, create it)
+5. Clone the [Obsidian 2 Book](https://github.com/Mitra98t/obsidian2book-plugin) repository inside the plugin folder
+6. Run `npm install` inside the repository folder
+7. Run `npm run build` inside the repository folder
+8. In Obsidian, make sure the plugin is enabled in `Settings > Third-party plugin > Obsidian 2 Book > Enable`
 
 ## Usage
 

@@ -1,6 +1,7 @@
 /* eslint-disable no-mixed-spaces-and-tabs */
 import {
 	App,
+	CachedMetadata,
 	FuzzySuggestModal,
 	Modal,
 	Notice,
@@ -29,7 +30,6 @@ interface Obsidian2BookSettings {
 	extensionsToIgnore: string[];
 	generateTOCs: boolean;
 	includeEmptyFolders: boolean;
-	showRibbonButton: boolean;
 	sortingStrategy: SortingStrategy;
 	lowGraneSortingStrategy: LowGraneSortingStrategy;
 }
@@ -41,7 +41,6 @@ const DEFAULT_SETTINGS: Obsidian2BookSettings = {
 	extensionsToIgnore: [],
 	generateTOCs: true,
 	includeEmptyFolders: false,
-	showRibbonButton: true,
 	sortingStrategy: SortingStrategy.ALPHABETICAL,
 	lowGraneSortingStrategy: LowGraneSortingStrategy.FILEFIRST,
 };
@@ -53,7 +52,14 @@ export default class Obsidian2BookClass extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.setRibbonButton();
+
+		this.ribbonButton = this.addRibbonIcon(
+			"book",
+			"Obsidian 2 Book: Generate a book from a specified folder",
+			(evt: MouseEvent) => {
+				new PathFuzzy(this, generateBook).open();
+			}
+		);
 
 		this.addCommand({
 			id: "generate-vault-book",
@@ -87,25 +93,6 @@ export default class Obsidian2BookClass extends Plugin {
 		});
 
 		this.addSettingTab(new Obsidian2BookSettingsPage(this.app, this));
-
-		this.registerInterval(window.setInterval(() => 5 * 60 * 1000));
-	}
-
-	setRibbonButton(): boolean {
-		if (this.settings.showRibbonButton) {
-			this.ribbonButton = this.addRibbonIcon(
-				"book",
-				"Obsidian 2 Book: Generate a book from a specified folder",
-				(evt: MouseEvent) => {
-					new PathFuzzy(this, generateBook).open();
-				}
-			);
-			this.ribbonButton.removeClass("hide");
-			return true;
-		} else {
-			this.ribbonButton.addClass("hide");
-			return false;
-		}
 	}
 
 	onunload() {}
@@ -150,11 +137,11 @@ type fileStruct = {
 let fileList: fileStruct[] = [];
 
 function isDocFile(file: TAbstractFile): boolean {
-	return file.hasOwnProperty("extension");
+	return file instanceof TFile;
 }
 
 function isDocFolder(file: TAbstractFile): boolean {
-	return file.hasOwnProperty("children");
+	return file instanceof TFolder;
 }
 
 function lineIncludesTag(line: string, tag: string[]): boolean {
@@ -175,6 +162,11 @@ function isBook(fileContent: string): boolean {
 	return fileContent.includes("<!--book-ignore-->");
 }
 
+
+function getAllTags(cache: CachedMetadata){
+	console.log(cache)
+}
+
 /**
  * true if file is valid false if file is to be ignored
  */
@@ -185,13 +177,7 @@ async function checkFile(
 ): Promise<boolean> {
 	const fileContent = await app.vault.read(file);
 	const isBookIgnore = isBook(fileContent);
-	const isTagIgnore =
-		settings.tagsToIgnore.length == 0
-			? false
-			: fileContent
-					.split(/\n/)
-					.filter((l) => lineIncludesTag(l, settings.tagsToIgnore))
-					.length > 0;
+	const isTagIgnore = getAllTags(app.metadataCache.getFileCache(file))
 
 	const isExtIgnore =
 		settings.extensionsToIgnore.length == 0
@@ -552,18 +538,7 @@ class Obsidian2BookSettingsPage extends PluginSettingTab {
 
 		containerEl.createEl("h2", { text: "Settings for my awesome plugin." });
 
-		new Setting(containerEl)
-			.setName("Show Ribbon Button")
-			.setDesc("Show button as shortcut on sidebar")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showRibbonButton)
-					.onChange(async (value) => {
-						this.plugin.settings.showRibbonButton = value;
-						await this.plugin.saveSettings();
-						this.plugin.setRibbonButton();
-					})
-			);
+	
 
 		new Setting(containerEl)
 			.setName("Generate TOCs")

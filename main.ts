@@ -52,7 +52,6 @@ export default class Obsidian2BookClass extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-
 		this.ribbonButton = this.addRibbonIcon(
 			"book",
 			"Obsidian 2 Book: Generate a book from a specified folder",
@@ -144,6 +143,7 @@ function isDocFolder(file: TAbstractFile): boolean {
 	return file instanceof TFolder;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function lineIncludesTag(line: string, tag: string[]): boolean {
 	const foundTagStandardForm = tag
 		.filter((x) => x.trim() != "")
@@ -162,9 +162,26 @@ function isBook(fileContent: string): boolean {
 	return fileContent.includes("<!--book-ignore-->");
 }
 
+function checkTags(cache: CachedMetadata | null, tagsToIgnore: string[]) {
+	console.log(cache);
+	if (cache == null) return false;
 
-function getAllTags(cache: CachedMetadata){
-	console.log(cache)
+	const elabTags = tagsToIgnore.map((t) => {
+		if (t[0] == "#") return t.slice(1).toLowerCase();
+		return t.toLowerCase();
+	});
+
+	const found =
+		(cache.tags != null &&
+			cache.tags.some((t) =>
+				elabTags.includes(t.tag.slice(1).toLocaleLowerCase())
+			)) ||
+		(cache.frontmatter != undefined &&
+			cache.frontmatter.tag != null &&
+			elabTags.some((t) =>
+				cache.frontmatter.tag.includes(t.toLowerCase())
+			));
+	return found;
 }
 
 /**
@@ -177,8 +194,11 @@ async function checkFile(
 ): Promise<boolean> {
 	const fileContent = await app.vault.read(file);
 	const isBookIgnore = isBook(fileContent);
-	const isTagIgnore = getAllTags(app.metadataCache.getFileCache(file))
+	const cachedMetadata = app.metadataCache.getFileCache(file);
+	const isTagIgnore = checkTags(cachedMetadata, settings.tagsToIgnore);
 
+	console.log(file.name);
+	console.log(isTagIgnore);
 	const isExtIgnore =
 		settings.extensionsToIgnore.length == 0
 			? false
@@ -537,8 +557,6 @@ class Obsidian2BookSettingsPage extends PluginSettingTab {
 		containerEl.empty();
 
 		containerEl.createEl("h2", { text: "Settings for my awesome plugin." });
-
-	
 
 		new Setting(containerEl)
 			.setName("Generate TOCs")

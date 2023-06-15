@@ -112,7 +112,6 @@ export default class Obsidian2BookClass extends Plugin {
 async function removeAllBooks(app: App) {
 	const { vault } = app;
 	const books = vault.getFiles();
-	console.log(books);
 	for (let i = 0; i < books.length; i++) {
 		const file = books[i];
 		const fileContent = await vault.read(file);
@@ -143,44 +142,26 @@ function isDocFolder(file: TAbstractFile): boolean {
 	return file instanceof TFolder;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function lineIncludesTag(line: string, tag: string[]): boolean {
-	const foundTagStandardForm = tag
-		.filter((x) => x.trim() != "")
-		.some((t) => line.toLowerCase().includes("#" + t.trim().toLowerCase()));
-	const foundTagMetadataForm =
-		(line.replace(/\s+/, "").startsWith("tag:") ||
-			line.replace(/\s+/, "").startsWith("tags:")) &&
-		tag
-			.filter((x) => x.trim() != "")
-			.some((t) => line.toLowerCase().includes(t.trim().toLowerCase()));
-
-	return foundTagStandardForm || foundTagMetadataForm;
-}
-
 function isBook(fileContent: string): boolean {
 	return fileContent.includes("<!--book-ignore-->");
 }
 
 function checkTags(cache: CachedMetadata | null, tagsToIgnore: string[]) {
-	console.log(cache);
 	if (cache == null) return false;
 
 	const elabTags = tagsToIgnore.map((t) => {
 		if (t[0] == "#") return t.slice(1).toLowerCase();
 		return t.toLowerCase();
 	});
-
+	const frontmatter = cache.frontmatter;
 	const found =
 		(cache.tags != null &&
 			cache.tags.some((t) =>
 				elabTags.includes(t.tag.slice(1).toLocaleLowerCase())
 			)) ||
-		(cache.frontmatter != undefined &&
-			cache.frontmatter.tag != null &&
-			elabTags.some((t) =>
-				cache.frontmatter.tag.includes(t.toLowerCase())
-			));
+		(frontmatter != undefined &&
+			frontmatter.tag != null &&
+			elabTags.some((t) => frontmatter.tag.includes(t.toLowerCase())));
 	return found;
 }
 
@@ -197,8 +178,6 @@ async function checkFile(
 	const cachedMetadata = app.metadataCache.getFileCache(file);
 	const isTagIgnore = checkTags(cachedMetadata, settings.tagsToIgnore);
 
-	console.log(file.name);
-	console.log(isTagIgnore);
 	const isExtIgnore =
 		settings.extensionsToIgnore.length == 0
 			? false
@@ -241,8 +220,8 @@ function visitFolder(
 	onlyFolders = false,
 	depth = 0
 ): void {
-	if (isDocFile(fileStr) && !onlyFolders) {
-		const file: TFile = fileStr as TFile;
+	if (fileStr instanceof TFile && !onlyFolders) {
+		const file: TFile = fileStr;
 		fileList.push({
 			type: "file",
 			path: (depth > 0 ? "/" : "") + file.path,
@@ -253,8 +232,8 @@ function visitFolder(
 			depth,
 			document: file,
 		});
-	} else if (isDocFolder(fileStr)) {
-		const dir: TFolder = fileStr as TFolder;
+	} else if (fileStr instanceof TFolder) {
+		const dir: TFolder = fileStr;
 		fileList.push({
 			type: "folder",
 			path: (depth > 0 ? "/" : "") + dir.path,
@@ -304,8 +283,9 @@ function visitFolder(
 		for (let i = 0; i < allChild.length; i++) {
 			const child = allChild[i];
 			if (
-				isDocFolder(child) &&
-				!checkFolder(app, child as TFolder, settings)
+				(child instanceof TFolder &&
+					!checkFolder(app, child, settings)) ||
+				(child instanceof TFile && !checkFile(app, child, settings))
 			)
 				continue;
 			visitFolder(settings, child, app, onlyFolders, depth + 1);
@@ -364,7 +344,7 @@ async function generateBook(
 
 	const generateTOCs = settings.generateTOCs;
 
-	const files: TAbstractFile | null = await vault.getAbstractFileByPath("/");
+	const files: TAbstractFile | null = vault.getAbstractFileByPath("/");
 	if (files === null || !isDocFolder(files)) {
 		console.error("Could not find folder: " + startingFolder);
 		if (startingFolder === "/") new Notice("Empty Vault");
@@ -421,8 +401,6 @@ async function generateBook(
 		}
 	}
 
-	const { adapter } = vault;
-
 	try {
 		const fileName = `${
 			vault.getName() +
@@ -430,19 +408,19 @@ async function generateBook(
 				? ""
 				: startingFolder.replace(/\s+|\\|\//g, "-"))
 		}_book.md`;
-		const fileExists = await adapter.exists(fileName);
-		if (fileExists) {
+		const fileExists = vault.getAbstractFileByPath(fileName);
+		if (fileExists != null) {
 			new ConfirmModal(
 				app,
 				"Overwrite",
 				`A file named ${fileName} already exists. Do you want to overwrite it?`,
 				() => {
-					const file = vault.getAbstractFileByPath(fileName);
-					if (file === null) return;
 					vault
-						.modify(file as TFile, content)
+						.modify(fileExists as TFile, content)
 						.then(() =>
-							app.workspace.getLeaf().openFile(file as TFile)
+							app.workspace
+								.getLeaf()
+								.openFile(fileExists as TFile)
 						);
 				},
 				() => {}
@@ -531,7 +509,6 @@ export class PathFuzzy extends FuzzySuggestModal<fileStruct> {
 
 	onChooseItem(folder: fileStruct, evt: MouseEvent | KeyboardEvent) {
 		new Notice(`Selected ${folder.path}`);
-		console.log(folder.path);
 		const depthOffset =
 			folder.path.split("").filter((x) => x == "/").length - 1;
 		this.selectCallBack(
@@ -555,8 +532,6 @@ class Obsidian2BookSettingsPage extends PluginSettingTab {
 		const { containerEl } = this;
 
 		containerEl.empty();
-
-		containerEl.createEl("h2", { text: "Settings for my awesome plugin." });
 
 		new Setting(containerEl)
 			.setName("Generate TOCs")
